@@ -1,0 +1,110 @@
+{
+  "id": "iso-sheet",
+  "name": "Isometric Manufacture Sheet",
+  "version": "1.0.0",
+  "description": "Projects every body of the open design to a true isometric, removes hidden lines with a depth buffer, and writes a dimensioned ANSI B manufacture sheet as SVG: title block, bill of materials, parameter table, notes and overall dimensions.",
+  "capabilities": [
+    "commands@0.1"
+  ],
+  "runtime": {
+    "module": "iso-sheet.wasm",
+    "entries": [
+      {
+        "name": "sheet",
+        "effect": "read",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "bodies": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "title": "Bodies",
+              "description": "Bodies to draw. Default: every body in the design."
+            },
+            "hidden": {
+              "type": "boolean",
+              "default": true,
+              "title": "Hidden lines",
+              "description": "Draw occluded edges dashed."
+            },
+            "tolerance": {
+              "type": "number",
+              "default": 0.15,
+              "title": "Chord tolerance (mm)",
+              "description": "Mesh chord tolerance used for the view and its hidden-line mask."
+            },
+            "scale": {
+              "type": "string",
+              "title": "Scale",
+              "description": "Sheet scale denominator, e.g. 2 for 1:2. Default: the largest standard scale that fits."
+            },
+            "title": {
+              "type": "string",
+              "title": "Sheet title"
+            },
+            "dwg_no": {
+              "type": "string",
+              "title": "Drawing number"
+            },
+            "date": {
+              "type": "string",
+              "title": "Date"
+            },
+            "notes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "title": "Notes",
+              "description": "Notes printed on the sheet."
+            },
+            "output": {
+              "type": "string",
+              "title": "Write SVG to",
+              "description": "File name for the SVG inside the folder granted to the plugin (grant: output). Default iso-sheet.svg."
+            },
+            "inline": {
+              "type": "boolean",
+              "default": false,
+              "title": "Return the SVG in the result"
+            }
+          }
+        },
+        "slots": [
+          {
+            "kind": "menu",
+            "name": "Isometric Sheet"
+          },
+          {
+            "kind": "ribbon",
+            "name": "Iso Sheet"
+          }
+        ]
+      }
+    ],
+    "commands": [
+      "document.inspect",
+      "inspect.measure",
+      "model.mesh"
+    ],
+    "limits": {
+      "fuel": 20000000000,
+      "memory_mib": 96,
+      "deadline_ms": 30000
+    },
+    "permissions": {
+      "files": [
+        {
+          "name": "output",
+          "read": true,
+          "write": true
+        }
+      ],
+      "clock": false,
+      "command_groups": [],
+      "net": false
+    }
+  }
+}
