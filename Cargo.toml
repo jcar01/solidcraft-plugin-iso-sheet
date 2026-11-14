@@ -2,6 +2,9 @@
 name = "iso-sheet"
 version = "1.0.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/jcar01/solidcraft-plugin-iso-sheet"
+description = "Isometric manufacturing sheet plugin for SolidCraft"
 
 [dependencies]
 wit-bindgen-rt = { version = "0.44.0", features = ["bitflags"] }

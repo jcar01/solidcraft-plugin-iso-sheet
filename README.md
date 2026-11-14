@@ -89,3 +89,16 @@ The WIT contract is `craft:plugin@0.1.0` (`wit/plugin.wit`): world `command-plug
 
 The manifest asks for 20 G fuel, 96 MiB and a 30 s deadline. A full five-body assembly at 0.15 mm
 takes roughly 1 s: about 5 700 triangles meshed, 924 visible and 1 357 hidden line segments.
+
+## License
+
+Dual-licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in
+this project by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without
+any additional terms or conditions.
