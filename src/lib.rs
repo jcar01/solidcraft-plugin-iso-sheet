@@ -94,14 +94,27 @@ fn read_opts(params: &str) -> Result<Opts, PluginError> {
     } else {
         serde_json::from_str(params).map_err(|e| invalid("params", &e.to_string()))?
     };
-    let bodies = v.get("bodies").and_then(Value::as_array).map(|a| {
-        a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect::<Vec<_>>()
-    });
-    let notes = v
-        .get("notes")
-        .and_then(Value::as_array)
-        .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect::<Vec<_>>())
-        .unwrap_or_default();
+    // The app's plugin dialog only draws scalar fields, so the manifest declares `body_names`
+    // and `notes` as strings: an array in the schema disables the whole form, and the manifest
+    // itself forces `bodies` to be an array. Arrays stay accepted for agent/CLI callers.
+    fn list(value: Option<&Value>, separators: &[char]) -> Option<Vec<String>> {
+        match value? {
+            Value::String(text) => Some(
+                text.split(|c| separators.contains(&c))
+                    .map(str::trim)
+                    .filter(|t| !t.is_empty())
+                    .map(str::to_string)
+                    .collect(),
+            ),
+            Value::Array(items) => Some(
+                items.iter().filter_map(|x| x.as_str()).map(str::trim).filter(|t| !t.is_empty()).map(str::to_string).collect(),
+            ),
+            _ => None,
+        }
+    }
+    let bodies = list(v.get("body_names").or_else(|| v.get("bodies")), &[',', ';', '\n'])
+        .filter(|b| !b.is_empty());
+    let notes = list(v.get("notes"), &[';', '|', '\n']).unwrap_or_default();
     let scale = v.get("scale").and_then(|s| {
         s.as_f64().or_else(|| s.as_str().and_then(|t| t.parse::<f64>().ok()))
     });

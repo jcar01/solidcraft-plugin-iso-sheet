@@ -44,14 +44,20 @@ Entry inputs (all optional, shown as a form in the app):
 
 | Input | Default | Meaning |
 |---|---|---|
-| `bodies` | every body | bodies to draw |
+| `body_names` | every body | comma-separated body names to draw (`bodies` still accepted from agent/CLI calls) |
 | `hidden` | `true` | draw occluded edges dashed |
 | `tolerance` | `0.15` | mesh chord tolerance in mm |
 | `scale` | auto | scale denominator, e.g. `2` for 1:2 |
 | `title`, `dwg_no`, `date` | design name / empty | title block text |
-| `notes` | none | lines printed under NOTES |
+| `notes` | none | notes printed under NOTES, separated by `;` |
 | `output` | none | file name for the SVG inside the folder granted to the plugin |
 | `inline` | `false` | always return the SVG in the result |
+
+The app's plugin dialog draws scalar fields only: one array-typed input makes it fall back to
+"This entry needs to be run from the agent or CLI." The manifest also requires properties named
+`selection`, `target`, `targets`, `bodies` or `body_ids` to be arrays. So the body filter is
+declared as `body_names` (a string), and `notes` is a `;`-separated string. Agent and CLI callers
+may still pass `bodies` or `notes` as real arrays.
 
 If you pass `output` the SVG is written to the plugin's granted folder. Without a granted folder the
 sheet is returned in the result instead (the reply also carries a `hint`). SVG output is vector, so it

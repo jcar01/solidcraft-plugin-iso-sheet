@@ -1,7 +1,7 @@
 {
   "id": "iso-sheet",
   "name": "Isometric Manufacture Sheet",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Projects every body of the open design to a true isometric, removes hidden lines with a depth buffer, and writes a dimensioned ANSI B manufacture sheet as SVG: title block, bill of materials, parameter table, notes and overall dimensions.",
   "capabilities": [
     "commands@0.1"
@@ -15,13 +15,10 @@
         "input_schema": {
           "type": "object",
           "properties": {
-            "bodies": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
+            "body_names": {
+              "type": "string",
               "title": "Bodies",
-              "description": "Bodies to draw. Default: every body in the design."
+              "description": "Body names to draw, comma-separated. Empty: every body in the design."
             },
             "hidden": {
               "type": "boolean",
@@ -53,12 +50,9 @@
               "title": "Date"
             },
             "notes": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
+              "type": "string",
               "title": "Notes",
-              "description": "Notes printed on the sheet."
+              "description": "Notes printed on the sheet, separated by ';'. Empty: none."
             },
             "output": {
               "type": "string",
