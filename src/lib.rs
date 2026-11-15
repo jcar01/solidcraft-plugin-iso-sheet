@@ -9,6 +9,7 @@ use std::collections::HashMap;
 #[allow(warnings)]
 mod bindings;
 
+use bindings::craft::plugin::clock;
 use bindings::craft::plugin::commands;
 use bindings::craft::plugin::control;
 use bindings::craft::plugin::files;
@@ -74,6 +75,109 @@ fn invalid(field: &str, reason: &str) -> PluginError {
     PluginError::InvalidInput(FieldFailure { field: field.to_string(), reason: reason.to_string() })
 }
 
+// ---------------------------------------------------------------- form values
+/// A scale is the denominator of 1:N (`2` or `1:2`), or a numerator when it is larger than the
+/// model (`2:1`). `Auto` and an empty value leave it to the sheet.
+fn parse_scale(value: Option<&Value>) -> Result<Option<f64>, PluginError> {
+    let Some(value) = value else { return Ok(None); };
+    if value.is_null() {
+        return Ok(None);
+    }
+    if let Some(n) = value.as_f64() {
+        return if n.is_finite() && n > 0.0 {
+            Ok(Some(n))
+        } else {
+            Err(invalid("scale", "scale must be Auto, 1:2, or a positive number"))
+        };
+    }
+    let Some(text) = value.as_str().map(str::trim) else {
+        return Err(invalid("scale", "scale must be Auto, 1:2, or a positive number"));
+    };
+    if text.is_empty() || text.eq_ignore_ascii_case("auto") {
+        return Ok(None);
+    }
+    let Some((numer, denom)) = text.split_once(':') else {
+        return match text.parse::<f64>() {
+            Ok(n) if n.is_finite() && n > 0.0 => Ok(Some(n)),
+            _ => Err(invalid("scale", "scale must be Auto, 1:2, or a positive number")),
+        };
+    };
+    let numer: f64 = numer.trim().parse().map_err(|_| invalid("scale", "use a ratio such as 1:2"))?;
+    let denom: f64 = denom.trim().parse().map_err(|_| invalid("scale", "use a ratio such as 1:2"))?;
+    if !(numer.is_finite() && denom.is_finite()) || numer <= 0.0 || denom <= 0.0 {
+        return Err(invalid("scale", "scale terms must be positive numbers"));
+    }
+    Ok(Some(denom / numer))
+}
+
+fn valid_date(text: &str) -> bool {
+    if text.len() != 10 || !text.is_ascii() {
+        return false;
+    }
+    let bytes = text.as_bytes();
+    if bytes[4] != b'-' || bytes[7] != b'-' {
+        return false;
+    }
+    let (Ok(year), Ok(month), Ok(day)) = (
+        text[0..4].parse::<i32>(),
+        text[5..7].parse::<u32>(),
+        text[8..10].parse::<u32>(),
+    ) else {
+        return false;
+    };
+    if !(1..=12).contains(&month) || day == 0 {
+        return false;
+    }
+    let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+    let last = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap => 29,
+        2 => 28,
+        _ => return false,
+    };
+    day <= last
+}
+
+fn today() -> Option<String> {
+    // The host returns Unix seconds; without the clock permission it returns the epoch.
+    let secs = clock::now();
+    (secs > 0).then(|| civil_from_days((secs / 86_400) as i64))
+}
+
+fn read_date(value: Option<&Value>) -> Result<String, PluginError> {
+    let raw = value.and_then(Value::as_str).unwrap_or("").trim();
+    if raw.is_empty() {
+        return Ok(match today() {
+            Some(date) => date,
+            None => {
+                note("clock permission is off; leaving the sheet date blank");
+                String::new()
+            }
+        });
+    }
+    if !valid_date(raw) {
+        return Err(invalid("date", "use YYYY-MM-DD, for example 2026-11-14"));
+    }
+    Ok(raw.to_string())
+}
+
+/// The SVG path inside the plugin's `output` grant. A folder ending in `/` or `\` gets the
+/// default file name; a name without an extension gets `.svg`.
+fn output_name(value: Option<&str>) -> Option<String> {
+    let raw = value?.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let mut name = raw.to_string();
+    if name.ends_with('/') || name.ends_with('\\') {
+        name.push_str("iso-sheet.svg");
+    } else if std::path::Path::new(&name).extension().is_none() {
+        name.push_str(".svg");
+    }
+    Some(name)
+}
+
 // ---------------------------------------------------------------- options
 struct Opts {
     bodies: Option<Vec<String>>,
@@ -94,9 +198,9 @@ fn read_opts(params: &str) -> Result<Opts, PluginError> {
     } else {
         serde_json::from_str(params).map_err(|e| invalid("params", &e.to_string()))?
     };
-    // The app's plugin dialog only draws scalar fields, so the manifest declares `body_names`
-    // and `notes` as strings: an array in the schema disables the whole form, and the manifest
-    // itself forces `bodies` to be an array. Arrays stay accepted for agent/CLI callers.
+    // The app's plugin dialog draws scalar fields and a string `enum` as a dropdown; an array in
+    // the schema disables the whole form, and the manifest itself forces `bodies` to be an array.
+    // Arrays stay accepted for agent/CLI callers.
     fn list(value: Option<&Value>, separators: &[char]) -> Option<Vec<String>> {
         match value? {
             Value::String(text) => Some(
@@ -115,20 +219,18 @@ fn read_opts(params: &str) -> Result<Opts, PluginError> {
     let bodies = list(v.get("body_names").or_else(|| v.get("bodies")), &[',', ';', '\n'])
         .filter(|b| !b.is_empty());
     let notes = list(v.get("notes"), &[';', '|', '\n']).unwrap_or_default();
-    let scale = v.get("scale").and_then(|s| {
-        s.as_f64().or_else(|| s.as_str().and_then(|t| t.parse::<f64>().ok()))
-    });
+    let scale = parse_scale(v.get("scale"))?;
     Ok(Opts {
         bodies,
         hidden: v.get("hidden").and_then(Value::as_bool).unwrap_or(true),
         tolerance: v.get("tolerance").and_then(Value::as_f64).unwrap_or(0.15),
         title: v.get("title").and_then(Value::as_str).unwrap_or("").to_string(),
         dwg: v.get("dwg_no").and_then(Value::as_str).unwrap_or("").to_string(),
-        out: v.get("output").and_then(Value::as_str).filter(|t| !t.trim().is_empty()).map(str::to_string),
+        out: output_name(v.get("output").and_then(Value::as_str)),
         inline: v.get("inline").and_then(Value::as_bool).unwrap_or(false),
         scale,
         notes,
-        date: v.get("date").and_then(Value::as_str).unwrap_or("").to_string(),
+        date: read_date(v.get("date"))?,
     })
 }
 
@@ -202,6 +304,10 @@ fn esc(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
 }
 fn f2(v: f64) -> String { format!("{:.2}", v) }
+fn term(v: f64) -> String {
+    let s = format!("{v:.4}");
+    s.trim_end_matches('0').trim_end_matches('.').to_string()
+}
 
 fn text(x: f64, y: f64, size: f64, s: &str, anchor: &str, bold: bool) -> String {
     format!(
@@ -216,6 +322,7 @@ struct Sheet {
     visible: usize,
     hidden: usize,
     scale_label: String,
+    fits: bool,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -243,9 +350,8 @@ fn build_sheet(
     }
     if !x0.is_finite() { x0 = 0.0; x1 = 1.0; y0 = 0.0; y1 = 1.0; }
 
-    const PW: f64 = 431.8;   // ANSI B landscape, mm.  SVG y grows downward.
-    const PH: f64 = 279.4;
-    let view = (16.0f64, 26.0f64, 300.0f64, 210.0f64); // x0, y0(top), x1, y1(bottom)
+    const VIEW: (f64, f64, f64, f64) = (16.0, 26.0, 300.0, 210.0); // x0, y0(top), x1, y1(bottom)
+    let view = VIEW;
     let vw = view.2 - view.0;
     let vh = view.3 - view.1;
     let w = (x1 - x0).max(1e-6);
@@ -254,18 +360,23 @@ fn build_sheet(
     // drafting scale, never larger than 1:1 unless asked
     let mut ratio = opts.scale.unwrap_or(0.0);
     if ratio <= 0.0 {
-        ratio = 10.0;
-        for r in [1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 10.0] {
+        ratio = 100.0;
+        for r in [1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 10.0, 20.0, 50.0, 100.0] {
             if w / r <= vw - 30.0 && h / r <= vh - 14.0 { ratio = r; break; }
         }
     }
     let s = 1.0 / ratio; // page mm per model mm
+    let fits = w * s <= vw && h * s <= vh;
 
     let ox = view.0 + (vw - w * s) / 2.0;
     let oy = view.1 + (vh - h * s) / 2.0;
     let px = |a: f64| ox + (a - x0) * s;
     let py = |b: f64| oy + (y1 - b) * s;
-    let ratio_txt = if (ratio - 1.0).abs() < 1e-9 { "1:1".to_string() } else { format!("1:{}", ratio) };
+    let ratio_txt = if ratio >= 1.0 {
+        if (ratio - 1.0).abs() < 1e-9 { "1:1".to_string() } else { format!("1:{}", term(ratio)) }
+    } else {
+        format!("{}:1", term(1.0 / ratio))
+    };
 
     // ---- depth buffer
     let bw = 1500usize;
@@ -467,7 +578,7 @@ fn build_sheet(
 
     svg.push_str("</svg>\n");
 
-    Sheet { svg, visible: nvis, hidden: nhid, scale_label: ratio_txt }
+    Sheet { svg, visible: nvis, hidden: nhid, scale_label: ratio_txt, fits }
 }
 
 fn shorten(s: &str, n: usize) -> String {
@@ -512,14 +623,35 @@ fn sheet(params: &str) -> Result<String, PluginError> {
     let unit = doc.get("units").and_then(Value::as_str).unwrap_or("mm").to_string();
     let unit_mm = match unit.as_str() { "in" => 25.4, "cm" => 10.0, "m" => 1000.0, _ => 1.0 };
 
-    let mut names: Vec<String> = opts.bodies.clone().unwrap_or_else(|| {
-        doc.get("bodies")
-            .and_then(Value::as_array)
-            .map(|a| a.iter().filter_map(|b| b.as_str().map(str::to_string)).collect())
-            .unwrap_or_default()
-    });
+    let available: Vec<String> = doc
+        .get("bodies")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(|b| b.as_str().map(str::to_string)).collect())
+        .unwrap_or_default();
+    let mut names: Vec<String> = match &opts.bodies {
+        Some(requested) => requested
+            .iter()
+            .map(|want| {
+                available
+                    .iter()
+                    .find(|name| name.eq_ignore_ascii_case(want))
+                    .cloned()
+                    .ok_or_else(|| {
+                        let hint = if available.is_empty() {
+                            "the design has no bodies".to_string()
+                        } else {
+                            format!("available: {}", available.join(", "))
+                        };
+                        invalid("body_names", &format!("unknown body '{want}'; {hint}"))
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+        None => available.clone(),
+    };
+    let mut seen = std::collections::HashSet::new();
+    names.retain(|name| seen.insert(name.clone()));
     if names.is_empty() {
-        return Err(invalid("bodies", "the design has no bodies to draw"));
+        return Err(invalid("body_names", "the design has no bodies to draw"));
     }
 
     control::progress(0.15, "measuring");
@@ -602,6 +734,8 @@ fn sheet(params: &str) -> Result<String, PluginError> {
         "visible_segments": sheet.visible,
         "hidden_segments": sheet.hidden,
         "scale": sheet.scale_label,
+        "date": date,
+        "available_bodies": available,
         "svg_bytes": sheet.svg.len(),
         "path": written,
         "write_error": write_error,
@@ -612,9 +746,15 @@ fn sheet(params: &str) -> Result<String, PluginError> {
             "unit": unit,
         },
     });
+    if !sheet.fits {
+        out["scale_note"] = Value::String(
+            "The drawing does not fit the sheet at the selected scale; choose a larger denominator (for example 1:10)."
+                .into(),
+        );
+    }
     if written.is_none() {
         out["hint"] = Value::String(
-            "No output folder is granted to this plugin, so the sheet is returned here instead.              Grant the plugin a folder (permission \"output\") in Preferences, then run it again to write the SVG."
+            "No output folder is granted to this plugin, so the sheet is returned here instead. Grant the plugin a folder (permission \"output\") in Preferences, then run it again to write the SVG."
                 .into());
     }
     if opts.inline || written.is_none() {
@@ -647,6 +787,44 @@ impl Guest for IsoSheet {
             "sheet" => sheet(&params),
             other => Err(invalid("entry", &format!("unknown entry '{other}'"))),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn dates_are_strict_iso() {
+        assert!(valid_date("2026-11-14"));
+        assert!(valid_date("2024-02-29"));
+        assert!(!valid_date("2023-02-29"));
+        assert!(!valid_date("2026-13-01"));
+        assert!(!valid_date("2026-11-31"));
+        assert!(!valid_date("11/14/2026"));
+        assert!(!valid_date("2026-1-4"));
+    }
+
+    #[test]
+    fn scales_accept_the_dropdown_and_legacy_forms() {
+        assert_eq!(parse_scale(Some(&json!(null))).unwrap(), None);
+        assert_eq!(parse_scale(Some(&json!("Auto"))).unwrap(), None);
+        assert_eq!(parse_scale(Some(&json!(""))).unwrap(), None);
+        assert_eq!(parse_scale(Some(&json!("1:2"))).unwrap(), Some(2.0));
+        assert_eq!(parse_scale(Some(&json!("2"))).unwrap(), Some(2.0));
+        assert_eq!(parse_scale(Some(&json!("2:1"))).unwrap(), Some(0.5));
+        assert!(parse_scale(Some(&json!("0"))).is_err());
+        assert!(parse_scale(Some(&json!("bogus"))).is_err());
+    }
+
+    #[test]
+    fn output_paths_get_a_file_name() {
+        assert_eq!(output_name(Some("")), None);
+        assert_eq!(output_name(Some("part")), Some("part.svg".to_string()));
+        assert_eq!(output_name(Some("part.SVG")), Some("part.SVG".to_string()));
+        assert_eq!(output_name(Some("sheets/")), Some("sheets/iso-sheet.svg".to_string()));
+        assert_eq!(output_name(Some("sheets\\")), Some("sheets\\iso-sheet.svg".to_string()));
     }
 }
 

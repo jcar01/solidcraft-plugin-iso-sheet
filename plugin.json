@@ -1,7 +1,7 @@
 {
   "id": "iso-sheet",
   "name": "Isometric Manufacture Sheet",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Projects every body of the open design to a true isometric, removes hidden lines with a depth buffer, and writes a dimensioned ANSI B manufacture sheet as SVG: title block, bill of materials, parameter table, notes and overall dimensions.",
   "capabilities": [
     "commands@0.1"
@@ -18,7 +18,7 @@
             "body_names": {
               "type": "string",
               "title": "Bodies",
-              "description": "Body names to draw, comma-separated. Empty: every body in the design."
+              "description": "Body names to draw, comma-separated. Empty: every body in the design. A dynamic body picker needs SolidCraft plugin-form support (issue #16274)."
             },
             "hidden": {
               "type": "boolean",
@@ -35,7 +35,18 @@
             "scale": {
               "type": "string",
               "title": "Scale",
-              "description": "Sheet scale denominator, e.g. 2 for 1:2. Default: the largest standard scale that fits."
+              "enum": [
+                "Auto",
+                "1:1",
+                "1:2",
+                "1:5",
+                "1:10",
+                "1:20",
+                "1:50",
+                "1:100"
+              ],
+              "default": "Auto",
+              "description": "Sheet scale. Auto picks the largest standard scale that fits the sheet."
             },
             "title": {
               "type": "string",
@@ -47,7 +58,9 @@
             },
             "date": {
               "type": "string",
-              "title": "Date"
+              "format": "date",
+              "title": "Date",
+              "description": "Sheet date as YYYY-MM-DD. Empty: today's date."
             },
             "notes": {
               "type": "string",
@@ -56,8 +69,9 @@
             },
             "output": {
               "type": "string",
+              "format": "path",
               "title": "Write SVG to",
-              "description": "File name for the SVG inside the folder granted to the plugin (grant: output). Default iso-sheet.svg."
+              "description": "SVG file name, or a folder path ending in / or \\, inside the folder granted to the plugin (grant: output). Empty: return the SVG in the result. A Browse button needs SolidCraft plugin-form support (issue #16274)."
             },
             "inline": {
               "type": "boolean",
@@ -96,7 +110,7 @@
           "write": true
         }
       ],
-      "clock": false,
+      "clock": true,
       "command_groups": [],
       "net": false
     }

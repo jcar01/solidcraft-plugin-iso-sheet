@@ -44,24 +44,34 @@ Entry inputs (all optional, shown as a form in the app):
 
 | Input | Default | Meaning |
 |---|---|---|
-| `body_names` | every body | comma-separated body names to draw (`bodies` still accepted from agent/CLI calls) |
+| `body_names` | every body | body names to draw, comma-separated, matched without regard to case (`bodies` still accepted from agent/CLI calls) |
 | `hidden` | `true` | draw occluded edges dashed |
 | `tolerance` | `0.15` | mesh chord tolerance in mm |
-| `scale` | auto | scale denominator, e.g. `2` for 1:2 |
-| `title`, `dwg_no`, `date` | design name / empty | title block text |
+| `scale` | `Auto` | dropdown: `Auto`, `1:1`, `1:2`, `1:5`, `1:10`, `1:20`, `1:50`, `1:100`; agent/CLI callers may also pass `2` or `2:1` |
+| `title`, `dwg_no` | design name / empty | title block text |
+| `date` | today | title block date as `YYYY-MM-DD`; empty uses today (wall clock) |
 | `notes` | none | notes printed under NOTES, separated by `;` |
-| `output` | none | file name for the SVG inside the folder granted to the plugin |
+| `output` | none | SVG file name, or a folder ending in `/` or `\`, inside the folder granted to the plugin; `.svg` is added when missing |
 | `inline` | `false` | always return the SVG in the result |
 
-The app's plugin dialog draws scalar fields only: one array-typed input makes it fall back to
-"This entry needs to be run from the agent or CLI." The manifest also requires properties named
-`selection`, `target`, `targets`, `bodies` or `body_ids` to be arrays. So the body filter is
-declared as `body_names` (a string), and `notes` is a `;`-separated string. Agent and CLI callers
-may still pass `bodies` or `notes` as real arrays.
+The 0.42.0 plugin dialog draws number, integer, boolean, text, and a string `enum` as a
+dropdown. The scale is therefore a real select menu. It still cannot draw a dynamic body list,
+a calendar, or a native folder picker: those need host support tracked in
+[tangency-labs/solidcraft#16274](https://github.com/tangency-labs/solidcraft/issues/16274). So
+the body filter stays a text field, `date` stays a `YYYY-MM-DD` text field with a today default,
+and `output` stays a path inside the grant. The manifest marks `date` with `format: "date"` and
+`output` with `format: "path"` so a later host can turn them into the intended widgets without a
+plugin change.
 
-If you pass `output` the SVG is written to the plugin's granted folder. Without a granted folder the
-sheet is returned in the result instead (the reply also carries a `hint`). SVG output is vector, so it
-prints or converts to PDF at any size.
+The manifest requires properties named `selection`, `target`, `targets`, `bodies` or `body_ids`
+to be arrays, and an array disables the whole dialog. The body filter is therefore declared as
+`body_names` (a string), and `notes` is a `;`-separated string. Agent and CLI callers may still
+pass `bodies` or `notes` as real arrays.
+
+If you pass `output` the SVG is written to the plugin's granted folder. Without a granted folder,
+leave `output` empty: a write attempt is refused by the host, while an empty `output` returns the
+sheet in the result instead (the reply also carries a hint). SVG output is vector, so it prints or
+converts to PDF at any size.
 
 ## Permissions
 
@@ -70,7 +80,8 @@ The manifest asks for exactly what it uses:
 - capability `commands@0.1`
 - commands `document.inspect`, `inspect.measure`, `model.mesh` — nothing that edits the design
 - one file grant, `output` (read + write), only touched when `output` is given
-- no `net`, no clock, no command groups
+- `clock` for today's date when `date` is empty
+- no `net`, no command groups
 
 ## Build
 
