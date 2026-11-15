@@ -60,7 +60,7 @@
               "type": "string",
               "format": "date",
               "title": "Date",
-              "description": "Sheet date as YYYY-MM-DD. Empty: today's date."
+              "description": "Sheet date as YYYY-MM-DD. Empty: today's date (UTC)."
             },
             "notes": {
               "type": "string",

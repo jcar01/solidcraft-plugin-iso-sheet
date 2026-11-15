@@ -49,7 +49,7 @@ Entry inputs (all optional, shown as a form in the app):
 | `tolerance` | `0.15` | mesh chord tolerance in mm |
 | `scale` | `Auto` | dropdown: `Auto`, `1:1`, `1:2`, `1:5`, `1:10`, `1:20`, `1:50`, `1:100`; agent/CLI callers may also pass `2` or `2:1` |
 | `title`, `dwg_no` | design name / empty | title block text |
-| `date` | today | title block date as `YYYY-MM-DD`; empty uses today (wall clock) |
+| `date` | today | title block date as `YYYY-MM-DD`; empty uses today (UTC, from the wall clock) |
 | `notes` | none | notes printed under NOTES, separated by `;` |
 | `output` | none | SVG file name, or a folder ending in `/` or `\`, inside the folder granted to the plugin; `.svg` is added when missing |
 | `inline` | `false` | always return the SVG in the result |
